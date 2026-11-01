@@ -21,6 +21,7 @@ use arrow::datatypes::{
 };
 use datafusion_common::ScalarValue;
 use datafusion_common::hash_utils::create_hashes;
+use datafusion_common::utils::has_float_leaf;
 use datafusion_common::{
     DataFusionError, Result, downcast_value, internal_datafusion_err, internal_err,
     not_impl_err,
@@ -921,28 +922,6 @@ fn is_supported_type(data_type: &DataType) -> bool {
         || is_hll_groups_type(value_type)
 }
 
-/// Returns true if `data_type` is a float or nests one (inside a list, struct,
-/// map, union, dictionary or run-end encoded type). Floats are rejected on their
-/// own, so they must be rejected inside containers too.
-fn contains_float(data_type: &DataType) -> bool {
-    match data_type {
-        DataType::Float16 | DataType::Float32 | DataType::Float64 => true,
-        DataType::List(f)
-        | DataType::LargeList(f)
-        | DataType::FixedSizeList(f, _)
-        | DataType::ListView(f)
-        | DataType::LargeListView(f)
-        | DataType::Map(f, _)
-        | DataType::RunEndEncoded(_, f) => contains_float(f.data_type()),
-        DataType::Struct(fields) => fields.iter().any(|f| contains_float(f.data_type())),
-        DataType::Union(fields, _) => {
-            fields.iter().any(|(_, f)| contains_float(f.data_type()))
-        }
-        DataType::Dictionary(_, v) => contains_float(v),
-        _ => false,
-    }
-}
-
 fn encoded_value_type(data_type: &DataType) -> &DataType {
     let mut value_type = data_type;
     loop {
@@ -958,7 +937,7 @@ fn encoded_value_type(data_type: &DataType) -> &DataType {
 /// [`HllGroupsAccumulator`]. The fixed-domain types (booleans / small ints) and
 /// `Null` fall back to the per-group [`Accumulator`] path.
 fn is_hll_groups_type(data_type: &DataType) -> bool {
-    if contains_float(data_type) {
+    if has_float_leaf(data_type) {
         return false;
     }
 
