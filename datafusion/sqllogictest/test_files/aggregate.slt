@@ -1902,6 +1902,19 @@ SELECT approx_distinct(arrow_cast(i, 'Dictionary(Int32, Float64)')) FROM approx_
 statement error DataFusion error: This feature is not implemented: Support for 'approx_distinct' for data type Dictionary\(Int32, Float64\) is not implemented
 SELECT g, approx_distinct(arrow_cast(i, 'Dictionary(Int32, Float64)')) FROM approx_distinct_group_test GROUP BY g;
 
+# Floats nested in lists, structs and maps are rejected just like bare floats.
+statement error DataFusion error: This feature is not implemented: Support for 'approx_distinct' for data type List\(Float64\) is not implemented
+SELECT approx_distinct(l) FROM (VALUES ([1.5]), ([2.5])) t(l);
+
+statement error DataFusion error: This feature is not implemented: Support for 'approx_distinct' for data type Struct\(a Float64\) is not implemented
+SELECT approx_distinct(s) FROM (VALUES (named_struct('a', 1.5)), (named_struct('a', 2.5))) t(s);
+
+statement error DataFusion error: This feature is not implemented: Support for 'approx_distinct' for data type Map\(Utf8, Float64\) is not implemented
+SELECT approx_distinct(m) FROM (VALUES (map(['k'], [1.5])), (map(['k'], [2.5]))) t(m);
+
+statement error DataFusion error: This feature is not implemented: Support for 'approx_distinct' for data type List\(Float64\) is not implemented
+SELECT g, approx_distinct(l) FROM (VALUES (1, [1.5]), (1, [2.5]), (2, [1.5])) t(g, l) GROUP BY g ORDER BY g;
+
 # RunEndEncoded: run-end encoded values must hash identically to the plain
 # values, so the counts below match the Utf8 / Int32 cases above.
 query I
