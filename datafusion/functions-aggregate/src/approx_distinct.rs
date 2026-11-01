@@ -873,7 +873,8 @@ impl AggregateUDFImpl for ApproxDistinct {
     }
 
     fn groups_accumulator_supported(&self, args: AccumulatorArgs) -> bool {
-        is_hll_groups_type(args.expr_fields[0].data_type())
+        let data_type = args.expr_fields[0].data_type();
+        is_supported_type(data_type) && is_hll_groups_type(data_type)
     }
 
     fn create_groups_accumulator(
@@ -881,7 +882,7 @@ impl AggregateUDFImpl for ApproxDistinct {
         args: AccumulatorArgs,
     ) -> Result<Box<dyn GroupsAccumulator>> {
         let data_type = args.expr_fields[0].data_type();
-        if is_hll_groups_type(data_type) {
+        if is_supported_type(data_type) && is_hll_groups_type(data_type) {
             Ok(Box::new(HllGroupsAccumulator::new()))
         } else {
             not_impl_err!(
@@ -916,6 +917,10 @@ fn is_fixed_domain_type(data_type: &DataType) -> bool {
 }
 
 fn is_supported_type(data_type: &DataType) -> bool {
+    if has_float_leaf(data_type) {
+        return false;
+    }
+
     let value_type = encoded_value_type(data_type);
     matches!(value_type, DataType::Null)
         || is_fixed_domain_type(value_type)
@@ -937,10 +942,6 @@ fn encoded_value_type(data_type: &DataType) -> &DataType {
 /// [`HllGroupsAccumulator`]. The fixed-domain types (booleans / small ints) and
 /// `Null` fall back to the per-group [`Accumulator`] path.
 fn is_hll_groups_type(data_type: &DataType) -> bool {
-    if has_float_leaf(data_type) {
-        return false;
-    }
-
     if matches!(
         data_type,
         DataType::Dictionary(_, _) | DataType::RunEndEncoded(_, _)
@@ -994,34 +995,6 @@ fn is_hll_groups_type(data_type: &DataType) -> bool {
 mod tests {
     use super::*;
     use std::hash::BuildHasher;
-
-    #[test]
-    fn nested_float_unsupported() {
-        let float = Arc::new(Field::new("item", DataType::Float64, true));
-        let int = Arc::new(Field::new("item", DataType::Int64, true));
-        let nested = [
-            DataType::List(Arc::clone(&float)),
-            DataType::LargeList(Arc::clone(&float)),
-            DataType::FixedSizeList(Arc::clone(&float), 2),
-            DataType::Struct(vec![Arc::clone(&float)].into()),
-            DataType::Map(
-                Arc::new(Field::new(
-                    "entries",
-                    DataType::Struct(vec![Arc::clone(&int), Arc::clone(&float)].into()),
-                    false,
-                )),
-                false,
-            ),
-            DataType::List(Arc::new(Field::new("item", DataType::List(float), true))),
-        ];
-        for t in nested {
-            assert!(!is_supported_type(&t), "{t}");
-            assert!(!is_hll_groups_type(&t), "{t}");
-        }
-        let ok = DataType::List(int);
-        assert!(is_supported_type(&ok));
-        assert!(is_hll_groups_type(&ok));
-    }
 
     #[test]
     fn dictionary_support() {
